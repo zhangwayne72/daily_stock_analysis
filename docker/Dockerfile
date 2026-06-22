@@ -23,7 +23,8 @@ WORKDIR /app
 ENV TZ=Asia/Shanghai
 RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
-# 安装系统依赖（wkhtmltopdf 含 wkhtmltoimage，用于 Markdown 转图片 Issue #289）
+# 安装系统依赖（wkhtmltopdf 含 wkhtmltoimage，用于 Markdown 转图片 Issue #289；
+# libpango 为 weasyprint PDF 生成所需的系统库）
 RUN apt-get update && apt-get install -y --no-install-recommends \
     gcc \
     curl \
@@ -34,6 +35,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libjpeg62-turbo \
     libxrender1 \
     libxext6 \
+    libpango-1.0-0 \
+    libpangoft2-1.0-0 \
     && rm -rf /var/lib/apt/lists/*
 
 # 创建非 root 用户 (UID 1000)
