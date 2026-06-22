@@ -11,6 +11,7 @@ import re
 from typing import Callable, List, Optional
 
 import markdown2
+import weasyprint
 
 TRUNCATION_SUFFIX = "\n\n...(本段内容过长已截断)"
 PAGE_MARKER_PREFIX = f"\n\n📄"
@@ -224,6 +225,23 @@ def markdown_to_html_document(markdown_text: str) -> str:
         </body>
         </html>
         """
+
+
+def markdown_to_pdf_bytes(markdown_text: str) -> bytes:
+    """
+    Convert Markdown report to PDF bytes (for email attachment).
+
+    Uses the existing markdown_to_html_document() to produce a styled
+    HTML document, then renders it to PDF via weasyprint.
+
+    Args:
+        markdown_text: Raw Markdown content.
+
+    Returns:
+        PDF file as bytes.
+    """
+    html = markdown_to_html_document(markdown_text)
+    return weasyprint.HTML(string=html).write_pdf()
 
 
 def markdown_to_plain_text(markdown_text: str) -> str:
