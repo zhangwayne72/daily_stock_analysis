@@ -11,13 +11,14 @@ from datetime import datetime
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from email.mime.image import MIMEImage
+from email.mime.application import MIMEApplication
 from email.header import Header
 from email.utils import formataddr
 import smtplib
 
 from data_provider.base import normalize_stock_code
 from src.config import Config
-from src.formatters import markdown_to_html_document
+from src.formatters import markdown_to_pdf_bytes
 
 
 logger = logging.getLogger(__name__)
@@ -140,50 +141,55 @@ class EmailSender:
         timeout_seconds: Optional[float] = None,
     ) -> bool:
         """
-        通过 SMTP 发送邮件（自动识别 SMTP 服务器）
-        
+        通过 SMTP 发送邮件（报告以 PDF 附件形式发送）
+
         Args:
-            content: 邮件内容（支持 Markdown，会转换为 HTML）
+            content: 邮件内容（Markdown 格式，会转换为 PDF 附件）
             subject: 邮件主题（可选，默认自动生成）
             receivers: 收件人列表（可选，默认使用配置的 receivers）
-            
+
         Returns:
             是否发送成功
         """
         if not self._is_email_configured():
             logger.warning("邮件配置不完整，跳过推送")
             return False
-        
+
         sender = self._email_config['sender']
         password = self._email_config['password']
         receivers = receivers or self._email_config['receivers']
         server: Optional[smtplib.SMTP] = None
-        
+
         try:
-            # 生成主题
+            # 生成主题和附件文件名
+            date_str = datetime.now().strftime('%Y-%m-%d')
             if subject is None:
-                date_str = datetime.now().strftime('%Y-%m-%d')
                 subject = f"📈 股票智能分析报告 - {date_str}"
-            
-            # 将 Markdown 转换为简单 HTML
-            html_content = markdown_to_html_document(content)
-            
-            # 构建邮件
-            msg = MIMEMultipart('alternative')
+            pdf_filename = f"股票分析报告_{date_str}.pdf"
+
+            # 将 Markdown 报告转换为 PDF 字节流
+            pdf_bytes = markdown_to_pdf_bytes(content)
+
+            # 构建 multipart/mixed 邮件（正文 + PDF 附件）
+            msg = MIMEMultipart('mixed')
             msg['Subject'] = Header(subject, 'utf-8')
             msg['From'] = self._format_sender_address(sender)
             msg['To'] = ', '.join(receivers)
-            
-            # 添加纯文本和 HTML 两个版本
-            text_part = MIMEText(content, 'plain', 'utf-8')
-            html_part = MIMEText(html_content, 'html', 'utf-8')
+
+            # 简短纯文本正文
+            body_text = f"今日股票分析报告已生成，详见附件 PDF。\n\n报告日期：{date_str}"
+            text_part = MIMEText(body_text, 'plain', 'utf-8')
             msg.attach(text_part)
-            msg.attach(html_part)
-            
+
+            # PDF 附件
+            pdf_part = MIMEApplication(pdf_bytes, _subtype='pdf')
+            pdf_part.add_header('Content-Disposition', 'attachment', filename=pdf_filename)
+            msg.attach(pdf_part)
+
             # 自动识别 SMTP 配置
             domain = sender.split('@')[-1].lower()
             smtp_config = SMTP_CONFIGS.get(domain)
-            
+
             if smtp_config:
                 smtp_server = smtp_config['server']
                 smtp_port = smtp_config['port']
@@ -195,7 +201,7 @@ class EmailSender:
                 smtp_port = 465
                 use_ssl = True
                 logger.warning(f"未知邮箱类型 {domain}，尝试通用配置: {smtp_server}:{smtp_port}")
-            
+
             # 根据配置选择连接方式
             if use_ssl:
                 # SSL 连接（端口 465）
@@ -204,13 +210,13 @@ class EmailSender:
                 # TLS 连接（端口 587）
                 server = smtplib.SMTP(smtp_server, smtp_port, timeout=timeout_seconds or 30)
                 server.starttls()
-            
+
             server.login(sender, password)
             server.send_message(msg)
-            
-            logger.info(f"邮件发送成功，收件人: {receivers}")
+
+            logger.info(f"邮件（PDF附件）发送成功，收件人: {receivers}")
             return True
-            
+
         except smtplib.SMTPAuthenticationError:
             logger.error("邮件发送失败：认证错误，请检查邮箱和授权码是否正确")
             return False
